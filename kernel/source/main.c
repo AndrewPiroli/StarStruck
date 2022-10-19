@@ -212,11 +212,11 @@ void kernel_main( void )
 
 	boot2_init();
 	
-	/*printk("Initializing SDHC...\n");
+	printk("Initializing SDHC...\n");
 	sdhc_init();
-
 	printk("Mounting SD...\n");
-	fres = f_mount(0, &fatfs);*/
+	fres = f_mount(0, &fatfs);
+	printk("Got %d from f_mount", fres);
 
 	if (read32(HW_CLOCKS) & 2) {
 		printk("GameCube compatibility mode detected...\n");
