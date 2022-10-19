@@ -12,6 +12,7 @@ Copyright (C) 2008, 2009	Hector Martin "marcan" <marcan@marcansoft.com>
 #include <vsprintf.h>
 #include <ios/processor.h>
 #include <ios/gecko.h>
+#include <ios/printk.h>
 
 #include "core/hollywood.h"
 #include "core/gpio.h"
@@ -31,7 +32,7 @@ void panic(const char *fmt, ...)
 	va_start(args, fmt);
 	vsprintf(buffer, fmt, args);
 	va_end(args);
-	gecko_printf(buffer);
+	printk(buffer);
 
 	DisableInterrupts();
 	panic2(0, PANIC_EXCEPTION);
