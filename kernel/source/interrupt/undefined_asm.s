@@ -42,6 +42,9 @@ BEGIN_ASM_FUNC UndefinedInstructionVector
 	ldmia	sp!, {r2}
 	msr		spsr_cxsf, r2
 	add		sp, sp, #0x04
+# for the same reason as above with `stm`...
 	ldmia	sp!, {r1-r12, sp, lr}^
+	nop
+	add sp, sp, #0x1
 	ldmia	sp!, {pc}^	
 END_ASM_FUNC

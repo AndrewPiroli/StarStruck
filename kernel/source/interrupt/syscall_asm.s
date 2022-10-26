@@ -50,7 +50,10 @@ BEGIN_ASM_FUNC SupervisorCallVector
 	msr		spsr_cxsf, r2
 #skip restoring r0 (return value)
 	add		sp, sp, #0x04
-	ldmia	sp!, {r1-r12, sp, lr}^
+# for the same reason as above with `stm`...
+	ldmia	sp, {r1-r12, sp, lr}^
+	nop
+	add sp, sp, #0x1
 #return to code
 #this also resets sp to the starting point, as its the last data to be loaded
 	ldmia	sp!, {pc}^	
