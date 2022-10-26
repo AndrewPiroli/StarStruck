@@ -19,8 +19,14 @@ BEGIN_ASM_FUNC SupervisorCallVector
 #store registers from before the call. r0 = return, r1 - r12 is parameters. current lr(or pc before the call) is the return address
 	stmdb	sp!, {lr}
 #save state & load address of our state into the stack , which we will use to retrieve the state
-	stmdb	sp!, {r0-r12, sp, lr}^
+# note - the 'writeback' feature of `stm` is not available when writing user mode registers
+# indicated by `^` because the register file is in the middle of a bank swap
+	stmdb	sp, {r0-r12, sp, lr}^
+# additionally, no registers in the bank swap (13-14 for all modes except FIQ where its 8-14) may be
+# accessed for one cycle after the `stm`. r1 is ok, but if a banked register is needed, a no-op has to be inserted
 	mrs		r1, spsr
+# now sp is available, we stored 15 registers, so decrement sp by 15
+	sub sp, sp, #0xf
 	stmdb	sp!, {r1}
 #load syscall number into r0 (from r8/lr) and cut off the first few bytes of the instruction
 #ifdef _THUMBMODE_

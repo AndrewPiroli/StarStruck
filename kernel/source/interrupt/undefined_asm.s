@@ -19,8 +19,11 @@
 BEGIN_ASM_FUNC UndefinedInstructionVector
 #for info : see syscall asm
 	stmdb	sp!, {lr}
-	stmdb	sp!, {r0-r12, sp, lr}^
+# see rules around stm with banked registers in syscall asm
+	stmdb	sp, {r0-r12, sp, lr}^
 	mrs		r1, spsr
+# manually decrement sp by 15 (# of registers stored)
+	sub sp, sp, #0xf
 	stmdb	sp!, {r1}
 	mov		r1, sp
 

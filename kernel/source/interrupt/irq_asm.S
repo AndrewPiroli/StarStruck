@@ -55,9 +55,11 @@ BEGIN_ASM_FUNC InterruptVector
 #load the pc from before the interrupt(which is stored in current lr)
 	subs	lr, lr, #4
 	stmdb	sp!, {lr}
-#save the state
-	stmdb	sp!, {r0-r12, sp, lr}^
+#save the state (see rules around stm with banked registers in syscall asm)
+	stmdb	sp, {r0-r12, sp, lr}^
 	mrs		r1, spsr
+# manually decrement sp by 15 (# of registers stored)
+	sub sp, sp, #0xf
 	stmdb	sp!, {r1}
 	
 #handle the irq request with r0 having the state
