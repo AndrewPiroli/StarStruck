@@ -150,6 +150,7 @@ void ScheduleYield( void )
 #restore the rest of the state\n\
 		mov		lr, %[threadContext] \n\
 		ldmia	lr, {r0-r12, sp, lr}^\n\
+		nop\n\
 		add		lr, lr, #0x3C\n\
 #jump to thread\n\
 		ldmia	lr, {pc}^\n"

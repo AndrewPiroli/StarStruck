@@ -35,7 +35,7 @@
 
 struct sdhc_host sc_host;
 
-//#define SDHC_DEBUG
+#define SDHC_DEBUG
 
 #define SDHC_COMMAND_TIMEOUT	500
 #define SDHC_TRANSFER_TIMEOUT	5000
@@ -44,15 +44,21 @@ struct sdhc_host sc_host;
 
 static inline u32 bus_space_read_4(bus_space_handle_t ioh, u32 reg)
 {
+	printk("sdhc: bus_space_read4: %u\n", reg); 
 	return read32(ioh + reg);
 }
 
 static inline u16 bus_space_read_2(bus_space_handle_t ioh, u32 reg)
 {
-	if(reg & 3)
+	printk("sdhc: bus_space_read2: %u\n", reg); 
+	if(reg & 3) {
+		printk("shifted to %u\n", reg & ~3);
 		return (read32((ioh + reg) & ~3) & 0xffff0000) >> 16;
-	else
+	}
+	else {
+		printk("no shift\n");
 		return (read32(ioh + reg) & 0xffff);
+	}
 }
 
 static inline u8 bus_space_read_1(bus_space_handle_t ioh, u32 reg)
@@ -64,21 +70,26 @@ static inline u8 bus_space_read_1(bus_space_handle_t ioh, u32 reg)
 	shift = (reg & 3) * 8;
 	mask = (0xFF << shift);
 	addr = ioh + reg;
-
+	printk("sdhc: bus_read_1: original: %u final: %u, mask: %u shift: %u\n", reg, addr, mask, shift);
 	return (read32(addr & ~3) & mask) >> shift;
 }
 
 static inline void bus_space_write_4(bus_space_handle_t ioh, u32 r, u32 v)
 {
+	printk("sdhc: bus write 4: %u = %u", r, v);
 	write32(ioh + r, v);
 }
 
 static inline void bus_space_write_2(bus_space_handle_t ioh, u32 r, u16 v)
 {
-	if(r & 3)
+	if(r & 3){
+		printk("sdhc: bus write 2: shifted %u = %u", r & ~3, v << 16);
 		mask32((ioh + r) & ~3, 0xffff0000, v << 16);
-	else
+	}
+	else {
+		printk("sdhc: bus write 2: %u = %u", r, v);
 		mask32((ioh + r), 0xffff, ((u32)v));
+	}
 }
 
 static inline void bus_space_write_1(bus_space_handle_t ioh, u32 r, u8 v)
@@ -90,7 +101,7 @@ static inline void bus_space_write_1(bus_space_handle_t ioh, u32 r, u8 v)
 	shift = (r & 3) * 8;
 	mask = (0xFF << shift);
 	addr = ioh + r;
-
+	printk("bus_space_write1 dest: %u mask: %u, val: %u\n", addr & ~3, mask, v << shift);
 	mask32(addr & ~3, mask, v << shift);
 }
 
@@ -126,10 +137,9 @@ int	sdhc_wait_intr_debug(const char *func, int line, struct sdhc_host *, int, in
 void	sdhc_transfer_data(struct sdhc_host *, struct sdmmc_command *);
 void	sdhc_read_data(struct sdhc_host *, u_char *, int);
 void	sdhc_write_data(struct sdhc_host *, u_char *, int);
-//#define SDHC_DEBUG 1
 #ifdef SDHC_DEBUG
-int sdhcdebug = 0;
-#define DPRINTF(n,s)	do { if ((n) <= sdhcdebug) gecko_printf s; } while (0)
+int sdhcdebug = 1;
+#define DPRINTF(n,s)	do { if ((n) <= sdhcdebug) printk s; } while (0)
 void	sdhc_dump_regs(struct sdhc_host *);
 #else
 #define DPRINTF(n,s)	do {} while(0)
@@ -149,14 +159,14 @@ sdhc_host_found(bus_space_tag_t iot, bus_space_handle_t ioh, int usedma)
 	u_int16_t version;
 
 	version = bus_space_read_2(ioh, SDHC_HOST_CTL_VERSION);
-	gecko_printf("sdhc: SD Host Specification/Vendor Version ");
+	printk("sdhc: SD Host Specification/Vendor Version ");
 
 	switch(SDHC_SPEC_VERSION(version)) {
 	case 0x00:
-		gecko_printf("1.0/%u\n", SDHC_VENDOR_VERSION(version));
+		printk("1.0/%u\n", SDHC_VENDOR_VERSION(version));
 		break;
 	default:
-		gecko_printf(">1.0/%u\n", SDHC_VENDOR_VERSION(version));
+		printk(">1.0/%u\n", SDHC_VENDOR_VERSION(version));
 		break;
 	}
 #endif

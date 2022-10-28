@@ -19,9 +19,14 @@ BEGIN_ASM_FUNC SupervisorCallVector
 #store registers from before the call. r0 = return, r1 - r12 is parameters. current lr(or pc before the call) is the return address
 	stmdb	sp!, {lr}
 #save state & load address of our state into the stack , which we will use to retrieve the state
+# note - the 'writeback' feature of `stm` is not available when writing user mode registers
+# indicated by `^` because the register file is in the middle of a bank swap
 	stmdb	sp, {r0-r12, sp, lr}^
-	sub		sp, sp, #0x3C
+# additionally, no registers in the bank swap (13-14 for all modes except FIQ where its 8-14) may be
+# accessed for one cycle after the `stm`. r1 is ok, but if a banked register is needed, a no-op has to be inserted
 	mrs		r1, spsr
+# now sp is available, we stored 15 registers, so decrement sp by 0x32 (4 bytes per register)
+	sub sp, sp, #0x3c
 	stmdb	sp!, {r1}
 #load syscall number into r0 (from r8/lr) and cut off the first few bytes of the instruction
 #ifdef _THUMBMODE_
@@ -45,8 +50,15 @@ BEGIN_ASM_FUNC SupervisorCallVector
 	msr		spsr_cxsf, r2
 #skip restoring r0 (return value)
 	add		sp, sp, #0x04
+<<<<<<< HEAD
 	ldmia	sp, {r1-r12, sp, lr}^
 	add		sp, sp, #0x38
+=======
+# for the same reason as above with `stm`...
+	ldmia	sp, {r1-r12, sp, lr}^
+	nop
+	add sp, sp, #0x38
+>>>>>>> origin/main
 #return to code
 #this also resets sp to the starting point, as its the last data to be loaded
 	ldmia	sp!, {pc}^	

@@ -19,9 +19,11 @@
 BEGIN_ASM_FUNC UndefinedInstructionVector
 #for info : see syscall asm
 	stmdb	sp!, {lr}
+# see rules around stm with banked registers in syscall asm
 	stmdb	sp, {r0-r12, sp, lr}^
-	sub		sp, sp, #0x3C
 	mrs		r1, spsr
+# manually decrement sp by 0x32 (# of registers stored * 4 bytes per register)
+	sub sp, sp, #0x3c
 	stmdb	sp!, {r1}
 	mov		r1, sp
 
@@ -40,7 +42,14 @@ BEGIN_ASM_FUNC UndefinedInstructionVector
 	ldmia	sp!, {r2}
 	msr		spsr_cxsf, r2
 	add		sp, sp, #0x04
+<<<<<<< HEAD
 	ldmia	sp, {r1-r12, sp, lr}^
 	add		sp, sp, #0x38
+=======
+# for the same reason as above with `stm`...
+	ldmia	sp!, {r1-r12, sp, lr}^
+	nop
+	add sp, sp, #0x38
+>>>>>>> origin/main
 	ldmia	sp!, {pc}^	
 END_ASM_FUNC
