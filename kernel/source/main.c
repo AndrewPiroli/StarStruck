@@ -218,6 +218,10 @@ void kernel_main( void )
 	fres = f_mount(0, &fatfs);
 	printk("Got %d from f_mount", fres);
 
+	asm __volatile__ ("loop:\n\
+			nop\n \
+			b loop");
+
 	if (read32(HW_CLOCKS) & 2) {
 		printk("GameCube compatibility mode detected...\n");
 		vector = boot2_run(1, 0x101);
