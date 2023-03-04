@@ -45,6 +45,7 @@ Copyright (C) 2009		John Kelley <wiidev@kelley.ca>
 #include "boot2.h"
 
 #define PPC_BOOT_FILE "/bootmii/ppcboot.elf"
+#define IN_EMULATOR
 
 FATFS fatfs;
 extern const u32 __ipc_heap_start[];
@@ -218,6 +219,12 @@ void kernel_main( void )
 	fres = f_mount(0, &fatfs);
 	printk("Got %d from f_mount", fres);
 
+#ifdef IN_EMULATOR
+	// unmask IPC IRQ
+	write32(HW_PPCIRQMASK, (1<<30));
+	// send an ack
+	write32(HW_IPC_ARMCTRL, read32(HW_IPC_ARMCTRL) | 0x08);
+#endif
 	asm __volatile__ ("loop:\n\
 			nop\n \
 			b loop");
