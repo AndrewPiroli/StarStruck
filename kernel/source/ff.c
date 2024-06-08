@@ -1364,7 +1364,7 @@ FRESULT auto_mount (	/* FR_OK(0): successful, !=0: any error occured */
 	const char *p = *path;
 	FATFS *fs;
 
-
+	printk("am 1\n");
 	/* Get logical drive number from the path name */
 	vol = p[0] - '0';			/* Is there a drive number? */
 	if (vol <= 9 && p[1] == ':') {
@@ -1385,8 +1385,9 @@ FRESULT auto_mount (	/* FR_OK(0): successful, !=0: any error occured */
 		stat = disk_status(fs->drive);
 		if (!(stat & STA_NOINIT)) {			/* and physical drive is kept initialized (has not been changed), */
 #if !_FS_READONLY
-			if (chk_wp && (stat & STA_PROTECT))	/* Check write protection if needed */
+			if (chk_wp && (stat & STA_PROTECT)){	/* Check write protection if needed */
 				return FR_WRITE_PROTECTED;
+			}
 #endif
 			return FR_OK;					/* The file system object is valid */
 		}
@@ -1397,8 +1398,11 @@ FRESULT auto_mount (	/* FR_OK(0): successful, !=0: any error occured */
 	fs->fs_type = 0;					/* Clear the file system object */
 	fs->drive = LD2PD(vol);				/* Bind the logical drive and a physical drive */
 	stat = disk_initialize(fs->drive);	/* Initialize low level disk I/O layer */
-	if (stat & STA_NOINIT)				/* Check if the drive is ready */
+	if (stat & STA_NOINIT) {				/* Check if the drive is ready */
+		printk("am 2 fail - disk_initialize(fs->drive) NOT READY\n");
 		return FR_NOT_READY;
+	}
+	printk("am 2 pass\n");
 #if _MAX_SS != 512						/* Get disk sector size if needed */
 	if (disk_ioctl(fs->drive, GET_SECTOR_SIZE, &SS(fs)) != RES_OK || SS(fs) > _MAX_SS)
 		return FR_NO_FILESYSTEM;
@@ -1561,13 +1565,16 @@ FRESULT f_open (
 
 	fp->fs = NULL;		/* Clear file object */
 #if !_FS_READONLY
+	printk("asdf1\n");
 	mode &= (FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_OPEN_ALWAYS | FA_CREATE_NEW);
 	res = auto_mount(&path, &dj.fs, (BYTE)(mode & (FA_WRITE | FA_CREATE_ALWAYS | FA_OPEN_ALWAYS | FA_CREATE_NEW)));
 #else
+	printk("asdf2\n");
 	mode &= FA_READ;
 	res = auto_mount(&path, &dj.fs, 0);
 #endif
 	if (res != FR_OK) LEAVE_FF(dj.fs, res);
+	printk("asdf3\n");
 	INITBUF(dj, sfn, lfn);
 	res = follow_path(&dj, path);	/* Follow the file path */
 

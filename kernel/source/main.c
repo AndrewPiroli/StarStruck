@@ -78,6 +78,8 @@ void DiThread()
 
 void kernel_main( void )
 {
+	//volatile u32* test = (volatile u32*)0xCCCCCCCC;
+	//printk("%d\n", *test);
 	//create IRQ Timer handler thread
 	s32 ret = CreateThread((u32)TimerHandler, NULL, NULL, 0, 0x7E, 1);
 	u32 threadId = (u32)ret;
@@ -218,7 +220,8 @@ void kernel_main( void )
 	printk("Mounting SD...\n");
 	fres = f_mount(0, &fatfs);
 	printk("Got %d from f_mount", fres);
-
+	FIL* test;
+	printk("read test: %d\n", f_open(test, "test.txt", FA_READ));
 #ifdef IN_EMULATOR
 	// unmask IPC IRQ
 	write32(HW_PPCIRQMASK, (1<<30));

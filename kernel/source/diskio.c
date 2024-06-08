@@ -17,8 +17,11 @@ static u8 buffer[512] ALIGNED(32);
 
 // Initialize a Drive
 DSTATUS disk_initialize (BYTE drv) {
-	if (sdmmc_check_card() == SDMMC_NO_CARD)
+	printk("disk_inizialize\n");
+	if (sdmmc_check_card() == SDMMC_NO_CARD) {
+		printk("no card\n");
 		return STA_NOINIT;
+	}
 
 	sdmmc_ack_card();
 	return disk_status(drv);
