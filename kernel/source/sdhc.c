@@ -625,11 +625,29 @@ sdhc_transfer_data(struct sdhc_host *hp, struct sdmmc_command *cmd)
 				continue;
 			}
 		}
-	} else
-		gecko_printf("fail.\n");
-
-	
-
+	} else {
+		u8* datap = cmd->c_data;
+		int datalen = cmd->c_datalen;
+		int i = 0;
+		int mask = ISSET(cmd->c_flags, SCF_CMD_READ) ? SDHC_BUFFER_READ_ENABLE : SDHC_BUFFER_WRITE_ENABLE;
+		while (datalen > 0) {
+			if (!sdhc_wait_intr(hp, SDHC_BUFFER_READ_READY|SDHC_BUFFER_WRITE_READY|SDHC_TRANSFER_TIMEOUT, cmd->c_timeout)) {
+				error = ETIMEDOUT;
+				break;
+			}
+			if ((error = sdhc_wait_state(hp, mask, mask)) != 0) {
+				break;
+			}
+			i = MIN(datalen, cmd->c_blklen);
+			if (ISSET(cmd->c_flags, SCF_CMD_READ)) { sdhc_read_data(hp, datap, i); }
+			else { sdhc_write_data(hp, datap, i); }
+			datap += i;
+			datalen -= i;
+		}
+		if (error == 0 && !sdhc_wait_intr(hp, SDHC_TRANSFER_COMPLETE|SDHC_TRANSFER_TIMEOUT, cmd->c_timeout)) {
+			error = ETIMEDOUT;
+		}
+	}
 #ifdef SDHC_DEBUG
 	/* XXX I forgot why I wanted to know when this happens :-( */
 	if ((cmd->c_opcode == 52 || cmd->c_opcode == 53) &&
@@ -647,6 +665,42 @@ sdhc_transfer_data(struct sdhc_host *hp, struct sdmmc_command *cmd)
 	DPRINTF(1,("sdhc: data transfer done (error=%d)\n", cmd->c_error));
 	return;
 }
+
+void
+sdhc_read_data(struct sdhc_host *hp, u_char *datap, int datalen)
+{
+	while (datalen > 3) {
+		*(u_int32_t *)datap = HREAD4(hp, SDHC_DATA);
+		datap += 4;
+		datalen -= 4;
+	}
+	if (datalen > 0) {
+		u_int32_t rv = HREAD4(hp, SDHC_DATA);
+		do {
+			*datap++ = rv & 0xff;
+			rv = rv >> 8;
+		} while (--datalen > 0);
+	}
+}
+
+void
+sdhc_write_data(struct sdhc_host *hp, u_char *datap, int datalen)
+{
+	while (datalen > 3) {
+		HWRITE4(hp, SDHC_DATA, *((u_int32_t *)datap));
+		datap += 4;
+		datalen -= 4;
+	}
+	if (datalen > 0) {
+		u_int32_t rv = *datap++;
+		if (datalen > 1)
+			rv |= *datap++ << 8;
+		if (datalen > 2)
+			rv |= *datap++ << 16;
+		HWRITE4(hp, SDHC_DATA, rv);
+	}
+}
+
 
 /* Prepare for another command. */
 int
