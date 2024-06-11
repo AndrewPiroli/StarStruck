@@ -674,7 +674,7 @@ void
 sdhc_read_data(struct sdhc_host *hp, u_char *datap, int datalen)
 {
 	while (datalen > 3) {
-//		printk("sdhc_read_data: datalen: %d\n", datalen);
+		// printk("DBG sdhc_read_data: datap32 %x\n", datap);
 		*(u_int32_t *)datap = HREAD4(hp, SDHC_DATA);
 		datap += 4;
 		datalen -= 4;
@@ -682,6 +682,7 @@ sdhc_read_data(struct sdhc_host *hp, u_char *datap, int datalen)
 	if (datalen > 0) {
 		u_int32_t rv = HREAD4(hp, SDHC_DATA);
 		do {
+			// printk("DBG sdhc_read_data: datap8 %x\n", datap);
 			*datap++ = rv & 0xff;
 			rv = rv >> 8;
 		} while (--datalen > 0);

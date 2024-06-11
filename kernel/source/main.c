@@ -218,8 +218,9 @@ void kernel_main( void )
 	printk("Initializing SDHC...\n");
 	sdhc_init();
 	printk("Mounting SD...\n");
-	fres = f_mount(0, &fatfs);
+	fres = f_mount(&fatfs, "", 0);
 	printk("Got %d from f_mount", fres);
+#if 0
 	printk("AP DBG nrootdir", fatfs.n_rootdir);
 	FIL test;
 	printk("fopen: %i\n", f_open(&test, "/test.txt", FA_READ));
@@ -229,6 +230,35 @@ void kernel_main( void )
 	printk("f_read: %d. Bytes read: %d\n", test_res, num_read);
 	buf[128] = 0;
 	printk("File contents: %s\n", buf);
+#else
+	DIR rd;
+	printk("DBG: opendir: %d\n", f_opendir(&rd, "/"));
+	FILINFO fi = {0};
+	int xres;
+	printk("DBG: Emulated SD Card Root Directory Listing\n");
+	while (((xres = f_readdir(&rd, &fi)) == FR_OK) && fi.fname[0] != '\0') {
+		printk("DBG: got file name: %s size: %ld\n", fi.fname, fi.fsize);
+	}
+	if (xres != FR_OK) {
+		printk("DBG: readdir fail %d\n", xres);
+	}
+	else {
+		printk("DBG: File Listing end\n");
+		f_closedir(&rd);
+		FIL test_txt;
+		int yres = f_open(&test_txt, "/A", FA_READ);
+		printk("DBG: trying to open TEST.TXT f_open=%d\n", yres);
+		if (yres == FR_OK) {
+			u8 buf = KMalloc(128);
+			int bytes_read = 0;
+			memset(buf, 0, 128);
+			printk("DBG: TEST.TXT fread = %d\n", f_read(&test_txt, buf, 128, &bytes_read));
+			printk("DBG: TEST.TXT bytes read=%d\n", bytes_read);
+			printk("DBG: TEST.TXT file contents %s\n", buf);
+		}
+	}
+#endif
+
 #ifdef IN_EMULATOR
 	// unmask IPC IRQ
 	write32(HW_PPCIRQMASK, (1<<30));

@@ -40,6 +40,7 @@ DSTATUS disk_status (BYTE drv) {
 DRESULT disk_read (BYTE drv, BYTE *buff, DWORD sector, BYTE count) {
 	int i;
 	(void)drv;
+	printk("DBG disk_read: sector %d buffptr %p cnt %d endptr %p\n", sector, buff, count, (buff + count * 512));
 	for (i = 0; i < count; i++) {
 		if (sdmmc_read(sector+i, 1, buffer) != 0)
 			return RES_ERROR;

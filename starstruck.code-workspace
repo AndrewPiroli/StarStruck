@@ -46,7 +46,7 @@
 		"C_Cpp.default.cStandard": "gnu17",
 		"C_Cpp.default.cppStandard": "gnu++17",
 		"C_Cpp.default.intelliSenseMode": "gcc-arm",
-		"C_Cpp.default.compilerPath": "${DKP_HOME}/devkitARM/bin/arm-none-eabi-gcc",
+		"C_Cpp.default.compilerPath": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc",
 		"C_Cpp.default.includePath": [
 			"${workspaceFolder}/../core/include",
 			"${workspaceFolder}/include",

@@ -313,7 +313,7 @@ int sdmmc_read(u32 blk_start, u32 blk_count, void *data)
 {
 	struct sdmmc_command cmd;
 
-//	printk("%s(%u, %u, %p)\n", __FUNCTION__, blk_start, blk_count, data);
+	printk("DBG %s(%u, %u, %p)\n", __FUNCTION__, blk_start, blk_count, data);
 	if (card.inserted == 0) {
 		printk("sdmmc: READ: no card inserted.\n");
 		return -1;
