@@ -674,7 +674,7 @@ void
 sdhc_read_data(struct sdhc_host *hp, u_char *datap, int datalen)
 {
 	while (datalen > 3) {
-		printk("sdhc_read_data: datalen: %d\n", datalen);
+//		printk("sdhc_read_data: datalen: %d\n", datalen);
 		*(u_int32_t *)datap = HREAD4(hp, SDHC_DATA);
 		datap += 4;
 		datalen -= 4;

@@ -220,8 +220,15 @@ void kernel_main( void )
 	printk("Mounting SD...\n");
 	fres = f_mount(0, &fatfs);
 	printk("Got %d from f_mount", fres);
-	FIL* test;
-	printk("read test: %d\n", f_open(test, "test.txt", FA_READ));
+	printk("AP DBG nrootdir", fatfs.n_rootdir);
+	FIL test;
+	printk("fopen: %i\n", f_open(&test, "/test.txt", FA_READ));
+	int num_read;
+	u8* buf = KMalloc(128);
+	int test_res = f_read(&test, &buf, 128, &num_read);
+	printk("f_read: %d. Bytes read: %d\n", test_res, num_read);
+	buf[128] = 0;
+	printk("File contents: %s\n", buf);
 #ifdef IN_EMULATOR
 	// unmask IPC IRQ
 	write32(HW_PPCIRQMASK, (1<<30));

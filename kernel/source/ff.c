@@ -107,15 +107,7 @@ WORD Fsid;				/* File system mount ID */
 
 
 #if _USE_LFN == 1	/* LFN with static LFN working buffer */
-static
-WORD LfnBuf[_MAX_LFN + 1];
-#define	NAMEBUF(sp,lp)	BYTE sp[12]; WCHAR *lp = LfnBuf
-#define INITBUF(dj,sp,lp)	dj.fn = sp; dj.lfn = lp
-
 #elif _USE_LFN > 1	/* LFN with dynamic LFN working buffer */
-#define	NAMEBUF(sp,lp)	BYTE sp[12]; WCHAR lbuf[_MAX_LFN + 1], *lp = lbuf
-#define INITBUF(dj,sp,lp)	dj.fn = sp; dj.lfn = lp
-
 #else				/* No LFN */
 #define	NAMEBUF(sp,lp)	BYTE sp[12]
 #define INITBUF(dj,sp,lp)	dj.fn = sp
@@ -785,6 +777,7 @@ FRESULT dir_find (
 	BYTE a, c, *dir;
 
 	res = dir_seek(dj, 0);			/* Rewind directory object */
+	printk("AP DBG dir_find rewind dir_seek=%d\n", res);
 	if (res != FR_OK) return res;
 
 #if _USE_LFN
@@ -793,10 +786,18 @@ FRESULT dir_find (
 #endif
 	do {
 		res = move_window(dj->fs, dj->sect);
+		printk("AP DBG move window=%d\n", res);
 		if (res != FR_OK) break;
 		dir = dj->dir;					/* Ptr to the directory entry of current index */
 		c = dir[DIR_Name];
-		if (c == 0) { res = FR_NO_FILE; break; }	/* Reached to end of table */
+		if (c == 0) {
+			printk("AP DBG dir[DIR_Name]==0 failed\n");
+			printk("AP DBG DIR_Name == %d\n", DIR_Name);
+			printk("AP DBG dir id=%d\n", dj->id);
+			printk("AP DBG dir index=%d\n", dj->index);
+			printk("AP DBG dir sclust=%d\n", dj->sclust);
+			printk("AP DBG dir clust=%d\n", dj->clust);
+			res = FR_NO_FILE; break; }	/* Reached to end of table */
 		a = dir[DIR_Attr] & AM_MASK;
 #if _USE_LFN	/* LFN configuration */
 		if (c == 0xE5 || c == '.' || ((a & AM_VOL) && a != AM_LFN)) {	/* An entry without valid data */
@@ -840,7 +841,7 @@ FRESULT dir_find (
 /*-----------------------------------------------------------------------*/
 /* Read an object from the directory                                     */
 /*-----------------------------------------------------------------------*/
-#if (_FS_MINIMIZE <= 2) && !_FS_READONLY
+#if (_FS_MINIMIZE <= 2)
 static
 FRESULT dir_read (
 	DIR *dj			/* Pointer to the directory object to store read object name */
@@ -1049,101 +1050,8 @@ FRESULT create_name (
 	const char **path	/* Pointer to pointer to the segment in the path string */
 )
 {
+	printk("AP DBG create_name path=%s\n", *path);
 #if _USE_LFN
-	BYTE c, b, cf, *sfn;
-	WCHAR w, *lfn;
-	int i, ni, si, di;
-	const char *p;
-
-	/* Create LFN in Unicode */
-	si = di = 0;
-	p = *path;
-	lfn = dj->lfn;
-	for (;;) {
-		w = (BYTE)p[si++];				/* Get a character */
-		if (w < ' ' || w == '/' || w == '\\') break;	/* Break on end of segment */
-		if (IsDBCS1(w)) {				/* If it is DBC 1st byte */
-			c = p[si++];				/* Get 2nd byte */
-			if (!IsDBCS2(c))			/* Reject invalid DBC */
-				return FR_INVALID_NAME;
-			w = (w << 8) + c;
-		} else {
-			if (chk_chr("\"*:<>\?|\x7F", w))	/* Reject unallowable chars for LFN */
-				return FR_INVALID_NAME;
-		}
-		w = ff_convert(w, 1);			/* Convert OEM to Unicode, store it */
-		if (!w || di >= _MAX_LFN)		/* Reject invalid code or too long name */
-			return FR_INVALID_NAME;
-		lfn[di++] = w;
-	}
-	*path = &p[si];						/* Rerurn pointer to the next segment */
-	cf = (w < ' ') ? 4 : 0;				/* Set last segment flag if end of path */
-
-	while (di) {						/* Strip trailing spaces and dots */
-		w = lfn[di - 1];
-		if (w != ' ' && w != '.') break;
-		di--;
-	}
-	if (!di) return FR_INVALID_NAME;	/* Reject null string */
-
-	lfn[di] = 0;						/* LFN is created */
-
-	/* Create SFN in directory form */
-	sfn = dj->fn;
-	mem_set(sfn, ' ', 11);
-	for (si = 0; lfn[si] == ' ' || lfn[si] == '.'; si++) ;	/* Strip leading spaces and dots */
-	if (si) cf |= 1;
-	while (di && lfn[di - 1] != '.') di--;	/* Find extension (di<=si: no extension) */
-
-	b = i = 0; ni = 8;
-	for (;;) {
-		w = lfn[si++];					/* Get an LFN char */
-		if (w == 0) break;				/* Break when enf of the LFN */
-		if (w == ' ' || (w == '.' && si != di)) {	/* Remove spaces and dots */
-			cf |= 1; continue;
-		}
-		if (i >= ni || si == di) {		/* Here is extension or end of SFN */
-			if (ni == 11) {				/* Extension is longer than 3 bytes */
-				cf |= 1; break;
-			}
-			if (si != di) cf |= 1;		/* File name is longer than 8 bytes */
-			if (si > di) break;			/* No extension */
-			si = di; i = 8; ni = 11;	/* Enter extension section */
-			b <<= 2; continue;
-		}
-		w = ff_convert(w, 0);			/* Unicode -> OEM code */
-		if (w >= 0x80) cf |= 0x20;		/* If there is any extended char, force create an LFN */
-		if (w >= 0x100) {				/* Double byte char */
-			if (i >= ni - 1) {
-				cf |= 1; i = ni; continue;
-			}
-			sfn[i++] = (BYTE)(w >> 8);
-		} else {						/* Single byte char */
-			if (chk_chr("+,;[=]", w)) {	/* Replace unallowable chars for SFN */
-				w = '_'; cf |= 1;
-			} else {
-				if (IsUpper(w)) {		/* Large capital */
-					b |= 2;
-				} else {
-					if (IsLower(w)) {	/* Small capital */
-						b |= 1; w -= 0x20;
-					}
-				}
-			}
-		}
-		sfn[i++] = (BYTE)w;
-	}
-	if (sfn[0] == 0xE5) sfn[0] = 0x05;	/* When first char collides with 0xE5, replace it with 0x05 */
-
-	if (ni == 8) b <<= 2;
-	if ((cf & 0x21) == 0) {	/* When LFN is in 8.3 format without extended char, NT flags are created */
-		if ((b & 0x03) == 0x01) cf |= 0x10;	/* NT flag (Extension has only small capital) */
-		if ((b & 0x0C) == 0x04) cf |= 0x08;	/* NT flag (Filename has only small capital) */
-		if ((b & 0x0C) != 0x0C && (b & 0x03) != 0x03) cf |= 2;	/* Eliminate LFN when non composite capitals */
-	}
-
-	sfn[11] = cf;		/* SFN is created */
-
 #else
 	BYTE c, d, b, *sfn;
 	int ni, si, i;
@@ -1194,7 +1102,7 @@ FRESULT create_name (
 
 	sfn[11] = c;		/* Store NT flag, File name is created */
 #endif
-
+	printk("AP DBG create_name sfn=%s\n", sfn);
 	return FR_OK;
 }
 
@@ -1267,8 +1175,6 @@ void get_fileinfo (		/* No return code */
 #endif /* _FS_MINIMIZE <= 1 */
 
 
-
-
 /*-----------------------------------------------------------------------*/
 /* Follow a file path                                                    */
 /*-----------------------------------------------------------------------*/
@@ -1279,6 +1185,7 @@ FRESULT follow_path (	/* FR_OK(0): successful, !=0: error code */
 	const char *path	/* Full-path string to find a file or directory */
 )
 {
+	printk("AP follow_path: path=%s\n", path);
 	FRESULT res;
 	BYTE *dir, last;
 
@@ -1287,20 +1194,27 @@ FRESULT follow_path (	/* FR_OK(0): successful, !=0: error code */
 
 	dj->sclust =						/* Set start directory (root dir) */
 		(dj->fs->fs_type == FS_FAT32) ? dj->fs->dirbase : 0;
+	printk("AP DBUG: %d\n", dj->sclust);
 
 	if ((BYTE)*path < ' ') {			/* Null path means the root directory */
+		printk("AP DBUG: null path means root dir. path < ' ' = %c\n", *path);
 		res = dir_seek(dj, 0);
 		dj->dir = NULL;
 
 	} else {							/* Follow path */
+		printk("AP DBUG follow path = %c\n", *path);
 		for (;;) {
 			res = create_name(dj, &path);	/* Get a segment */
-			if (res != FR_OK) break;
+			printk("AP DBUG follow path loop\n");
+			if (res != FR_OK){printk("AP DBUG failed create_name\n"); break; }
 			res = dir_find(dj);				/* Find it */
 			last = *(dj->fn+11) & 4;
 			if (res != FR_OK) {				/* Could not find the object */
-				if (res == FR_NO_FILE && !last)
+				printk("AP DBG dir_find failed %d\n", res);
+				if (res == FR_NO_FILE && !last) {
+					printk("AP DBG FR_NO_FILE and !last\n");
 					res = FR_NO_PATH;
+				}
 				break;
 			}
 			if (last) break;				/* Last segment match. Function completed. */
@@ -1444,8 +1358,10 @@ FRESULT auto_mount (	/* FR_OK(0): successful, !=0: any error occured */
 	if (mclst >= 0xFF7) fmt = FS_FAT16;				/* Number of clusters >= 0xFF5 */
 	if (mclst >= 0xFFF7) fmt = FS_FAT32;			/* Number of clusters >= 0xFFF5 */
 
-	if (fmt == FS_FAT32)
+	if (fmt == FS_FAT32) {
+		printk("AP DBG dirbase FAT32");
 		fs->dirbase = LD_DWORD(fs->win+BPB_RootClus);	/* Root directory start cluster */
+	}
 	else
 		fs->dirbase = fs->fatbase + fsize;				/* Root directory start sector (lba) */
 	fs->database = fs->fatbase + fsize + fs->n_rootdir / (SS(fs)/32);	/* Data start sector (lba) */
@@ -1471,7 +1387,7 @@ FRESULT auto_mount (	/* FR_OK(0): successful, !=0: any error occured */
 	fs->fs_type = fmt;			/* FAT syb-type */
 	fs->id = ++Fsid;			/* File system mount ID */
 	res = FR_OK;
-
+	printk("AP DBG - auto_mount OK");
 	return res;
 }
 
@@ -1558,7 +1474,7 @@ FRESULT f_open (
 )
 {
 	FRESULT res;
-	DIR dj;
+	DIR dj = {0};
 	NAMEBUF(sfn, lfn);
 	BYTE *dir;
 
@@ -1568,15 +1484,19 @@ FRESULT f_open (
 	printk("asdf1\n");
 	mode &= (FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_OPEN_ALWAYS | FA_CREATE_NEW);
 	res = auto_mount(&path, &dj.fs, (BYTE)(mode & (FA_WRITE | FA_CREATE_ALWAYS | FA_OPEN_ALWAYS | FA_CREATE_NEW)));
+	printk("AP1       RES SO FAR: %d\n", res);
 #else
 	printk("asdf2\n");
 	mode &= FA_READ;
 	res = auto_mount(&path, &dj.fs, 0);
+	printk("AP2       RES SO FAR: %d\n", res);
 #endif
 	if (res != FR_OK) LEAVE_FF(dj.fs, res);
 	printk("asdf3\n");
 	INITBUF(dj, sfn, lfn);
 	res = follow_path(&dj, path);	/* Follow the file path */
+	printk("AP3       RES SO FAR: %d\n", res);
+	printk("asdf4\n");
 
 #if !_FS_READONLY
 	/* Create or Open a file */
@@ -2958,3 +2878,7 @@ int f_printf (
 
 #endif /* !_FS_READONLY */
 #endif /* _USE_STRFUNC */
+
+DWORD get_fattime (void) {
+	return 0;
+}
