@@ -25,7 +25,7 @@ extern u32* MemoryTranslationTable;
 extern u32 DomainAccessControlTable[MAX_PROCESSES];
 extern u32* HardwareRegistersAccessTable[MAX_PROCESSES];
 void EndThread();
-#define STACK_SIZE		0x400
+#define STACK_SIZE		0x800
 
 u32 ProcessUID[MAX_PROCESSES] = { 0 };
 u16 ProcessGID[MAX_PROCESSES] = { 0 };
