@@ -17,8 +17,8 @@
 
 #ifndef _DISKIO
 
-#define _READONLY	1	/* 1: Read-only mode */
-#define _USE_IOCTL	0
+#define _READONLY	0	/* 1: Read-only mode */
+#define _USE_IOCTL	1
 
 #include "integer.h"
 
@@ -56,10 +56,8 @@ DRESULT disk_ioctl (BYTE, BYTE, void*);
 #define STA_PROTECT		0x04	/* Write protected */
 
 
-#if _USE_IOCTL == 1
 /* Command code for disk_ioctl() */
 #define CTRL_SYNC	0	/* Mandatory for write functions */
-#endif
 
 #define _DISKIO
 #endif
