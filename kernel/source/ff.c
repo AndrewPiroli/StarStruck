@@ -2407,7 +2407,7 @@ static FRESULT dir_find (	/* FR_OK(0):succeeded, !=0:error */
 			printk("AP DBG winsect %d\n", fs->winsect);
 			printk("AP DBG winptr: %p\n", fs->win);
 			printk("DBG DUMP WINDOW:\n");
-			for (int asdf=0; asdf<512; asdf+=4)
+			for (int asdf=0; asdf<128; asdf+=4)
 				printk("DBG %d 0x%08x\n", asdf, *((u32*)((fs->win)+asdf)));
 			res = FR_NO_FILE;
 			break;
@@ -2816,6 +2816,11 @@ static int pattern_match (	/* 0:mismatched, 1:matched */
 /*-----------------------------------------------------------------------*/
 /* Pick a top segment and create the object name in directory form       */
 /*-----------------------------------------------------------------------*/
+static reee = "TEST    TXT";
+static blank = "           ";
+#define hd(x) \
+	for(int asdf=0;asdf<11;asdf++) \
+		printk("AP DBG _______________________ %x %c\n", *(x+asdf), *(x+asdf));
 
 static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not create */
 	DIR* dp,					/* Pointer to the directory object */
@@ -2827,10 +2832,15 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 	BYTE *sfn;
 	UINT ni, si, i;
 	const char *p;
-	printk("AP DBG ----------- IN create_name\n");
+	printk("AP DBG ----------- IN create_name; sentinel: %s\n", reee);
 	/* Create file name in directory form */
 	p = *path; sfn = dp->fn;
+	printk("AP DBG XXXX GET READY TO RUMBLE\n");
 	memset(sfn, ' ', 11);
+	hd(sfn)
+	printk("AP DBG HOW DID THAT GO IDIOT");
+	strncpy(sfn, blank, 11);
+	hd(sfn)
 	si = i = 0; ni = 8;
 	for (;;) {
 		c = (BYTE)p[si++];				/* Get a byte */
@@ -2856,6 +2866,7 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 		}
 #endif
 		if (dbc_1st(c)) {				/* Check if it is a DBC 1st byte */
+			printk("AP DBG  ______________________ BAD PATH\n");
 			d = (BYTE)p[si++];			/* Get 2nd byte */
 			if (!dbc_2nd(d) || i >= ni - 1) return FR_INVALID_NAME;	/* Reject invalid DBC */
 			sfn[i++] = c;
@@ -2863,6 +2874,8 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 		} else {						/* SBC */
 			if (strchr("*+,:;<=>[]|\"\?\x7F", (int)c)) return FR_INVALID_NAME;	/* Reject illegal chrs for SFN */
 			if (IsLower(c)) c -= 0x20;	/* To upper */
+			printk("AP DBG ---------------- create_name sfn inc i=%d c=%c. Current: |%s|\n", i, c, sfn);
+			hd(sfn)
 			sfn[i++] = c;
 		}
 	}

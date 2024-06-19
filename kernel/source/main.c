@@ -246,7 +246,7 @@ void kernel_main( void )
 		printk("DBG: File Listing end\n");
 		f_closedir(&rd);
 		FIL test_txt;
-		int yres = f_open(&test_txt, "/A", FA_READ);
+		int yres = f_open(&test_txt, "/TEST.TXT", FA_READ);
 		printk("DBG: trying to open TEST.TXT f_open=%d\n", yres);
 		if (yres == FR_OK) {
 			u8 buf = KMalloc(128);
