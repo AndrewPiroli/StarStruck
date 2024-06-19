@@ -160,6 +160,7 @@ int sdmmc_select(void);
 int sdmmc_check_card(void);
 int sdmmc_ack_card(void);
 int sdmmc_read(u32 blk_start, u32 blk_count, void *data);
+int sdmmc_write(u32 blk_start, u32 blk_count, void *data);
 
 /* MMC commands */				/* response type */
 #define MMC_GO_IDLE_STATE		0	/* R0 */
