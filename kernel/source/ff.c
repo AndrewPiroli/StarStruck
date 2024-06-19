@@ -64,6 +64,7 @@
 /                   Added multiple sector size support.
 /---------------------------------------------------------------------------*/
 
+#include <string.h>
 #include "ff.h"			/* FatFs configurations and declarations */
 #include "diskio.h"		/* Declarations of low level disk I/O functions */
 
@@ -139,16 +140,20 @@ WORD LfnBuf[_MAX_LFN + 1];
 /* Copy memory to memory */
 static
 void mem_cpy (void* dst, const void* src, int cnt) {
+	memcpy(dst, src, cnt);
+/*
 	char *d = (char*)dst;
 	const char *s = (const char *)src;
 	while (cnt--) *d++ = *s++;
+	*/
 }
 
 /* Fill memory */
 static
 void mem_set (void* dst, int val, int cnt) {
-	char *d = (char*)dst;
-	while (cnt--) *d++ = (char)val;
+	(void)memset(dst, val, cnt);
+/*	char *d = (char*)dst;
+	while (cnt--) *d++ = (char)val;*/
 }
 
 /* Compare memory to memory */
@@ -1038,7 +1043,6 @@ FRESULT dir_remove (	/* FR_OK: Successful, FR_DISK_ERR: A disk error */
 
 
 
-
 /*-----------------------------------------------------------------------*/
 /* Pick a segment and create the object name in directory form           */
 /*-----------------------------------------------------------------------*/
@@ -1151,7 +1155,7 @@ FRESULT create_name (
 
 	/* Create file name in directory form */
 	sfn = dj->fn;
-	mem_set(sfn, ' ', 11);
+	memset(sfn, ' ', 11);
 	si = i = b = 0; ni = 8;
 	p = *path;
 	for (;;) {
@@ -2951,3 +2955,7 @@ int f_printf (
 
 #endif /* !_FS_READONLY */
 #endif /* _USE_STRFUNC */
+
+DWORD get_fattime (void) {
+	return 0;
+}
