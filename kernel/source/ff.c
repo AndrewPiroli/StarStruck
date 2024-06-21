@@ -2816,11 +2816,12 @@ static int pattern_match (	/* 0:mismatched, 1:matched */
 /*-----------------------------------------------------------------------*/
 /* Pick a top segment and create the object name in directory form       */
 /*-----------------------------------------------------------------------*/
-static reee = "TEST    TXT";
-static blank = "           ";
+static char* reee = "TEST    TXT";
+static char* blank = "           ";
 #define hd(x) \
 	for(int asdf=0;asdf<11;asdf++) \
 		printk("AP DBG _______________________ %x %c\n", *(x+asdf), *(x+asdf));
+
 
 static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not create */
 	DIR* dp,					/* Pointer to the directory object */
@@ -2835,8 +2836,11 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 	printk("AP DBG ----------- IN create_name; sentinel: %s\n", reee);
 	/* Create file name in directory form */
 	p = *path; sfn = dp->fn;
-	printk("AP DBG XXXX GET READY TO RUMBLE\n");
+	printk("AP DBG XXXX GET READY TO RUMBLE. ptr=%x\n", sfn);
+	asm volatile ("bkpt #0xfd");
 	memset(sfn, ' ', 11);
+	asm volatile ("bkpt #0xfc");
+	//memset(sfn, ' ', 11);
 	hd(sfn)
 	printk("AP DBG HOW DID THAT GO IDIOT");
 	strncpy(sfn, blank, 11);

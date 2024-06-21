@@ -22,6 +22,7 @@
  
 #include <string.h>
 #include <ios/processor.h>
+#include <ios/printk.h>
 #include <ios/gecko.h>
 
 #include "memory/memory.h"

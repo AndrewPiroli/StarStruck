@@ -6,7 +6,7 @@ include $(DEVKITARM)/base_rules
 
 ARCHFLAGS = -mbig-endian -mcpu=arm926ej-s $(THUMBPARAM)
 CFLAGS = $(ARCHFLAGS) -fomit-frame-pointer -ffunction-sections
-CFLAGS += -Wall -Wextra -Os -pipe -gdwarf-4 -Wconversion
+CFLAGS += -Wall -Wextra -Os -pipe -gdwarf-4 -Wconversion -Wno-error=int-conversion
 ASFLAGS = 
 LDFLAGS = $(ARCHFLAGS) -n -nostartfiles -nodefaultlibs -Wl,-gc-sections -Wl,--use-blx
 COREDIR = ./core

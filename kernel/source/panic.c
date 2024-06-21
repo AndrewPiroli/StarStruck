@@ -12,6 +12,7 @@ Copyright (C) 2008, 2009	Hector Martin "marcan" <marcan@marcansoft.com>
 #include <vsprintf.h>
 #include <ios/processor.h>
 #include <ios/gecko.h>
+#include <ios/printk.h>
 
 #include "core/hollywood.h"
 #include "core/gpio.h"

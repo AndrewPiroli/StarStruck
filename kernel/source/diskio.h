@@ -21,7 +21,7 @@
 #define _USE_IOCTL	1
 
 #include "integer.h"
-
+#include <ios/printk.h>
 /* Status of Disk Functions */
 typedef BYTE	DSTATUS;
 

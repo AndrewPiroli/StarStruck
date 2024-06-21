@@ -10,6 +10,7 @@ Copyright (C) 2008, 2009	Sven Peter <svenpeter@gmail.com>
 
 #include <string.h>
 #include <ios/gecko.h>
+#include <ios/printk.h>
 
 #include "core/defines.h"
 #include "memory/memory.h"
