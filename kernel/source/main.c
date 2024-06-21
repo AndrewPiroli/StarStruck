@@ -213,11 +213,31 @@ void kernel_main( void )
 
 	boot2_init();
 	
-	/*printk("Initializing SDHC...\n");
+	printk("Initializing SDHC...\n");
 	sdhc_init();
 
 	printk("Mounting SD...\n");
-	fres = f_mount(0, &fatfs);*/
+	fres = f_mount(0, &fatfs);
+	if (fres == FR_OK) {
+		FIL test_txt;
+		fres = f_open(&test_txt, "/test.txt", FA_READ);
+		if (fres == FR_OK) {
+			u8* test_txt_buf = (u8*)KMalloc(128);
+			if (test_txt_buf) {
+				memset(test_txt_buf, 0, 128);
+				int bytes_read = 0;
+				fres = f_read(&test_txt, test_txt_buf, 128, &bytes_read);
+				printk("f_read = %d. Bytes: %d\n");
+				printk("File contents: %s\n", test_txt_buf);
+			}
+			else
+				printk("KMalloc\n");
+		}
+		else
+			printk("f_open: %d\n", fres);
+	}
+	else
+		printk("f_open: %d\n", fres);
 
 #ifdef IN_EMULATOR
 	// unmask IPC IRQ
