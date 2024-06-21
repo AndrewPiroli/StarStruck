@@ -251,11 +251,42 @@ void kernel_main( void )
 
 	boot2_init();
 	
-	/*printk("Initializing SDHC...\n");
+	printk("Initializing SDHC...\n");
 	sdhc_init();
 
 	printk("Mounting SD...\n");
-	fres = f_mount(0, &fatfs);*/
+	fres = f_mount(0, &fatfs);
+	if (fres == FR_OK) {
+		FIL test_txt;
+		fres = f_open(&test_txt, "/test.txt", FA_READ | FA_WRITE);
+		if (fres == FR_OK) {
+			u8* test_txt_buf = (u8*)KMalloc(128);
+			if (test_txt_buf) {
+				memset(test_txt_buf, 0, 128);
+				unsigned int bytes_read = 0;
+				fres = f_read(&test_txt, test_txt_buf, 128, &bytes_read);
+				printk("f_read = %d. Bytes: %d\n", fres, bytes_read);
+				printk("File contents: %s\n", test_txt_buf);
+				static char* to_write = "Overwritten!";
+				printk("lseek: %d\n", f_lseek(&test_txt, 0));
+				unsigned int written = 0;
+				printk("f_write: %d written: %d\n", f_write(&test_txt, to_write, strlen(to_write), &written), written);
+				printk("sync: %d\n", f_sync(&test_txt));
+				printk("lseek: %d\n", f_lseek(&test_txt, 0));
+				bytes_read = 0;
+				memset(test_txt_buf, 0, 128);
+				fres = f_read(&test_txt, test_txt_buf, 128, &bytes_read);
+				printk("f_read = %d. Bytes: %d\n", fres, bytes_read);
+				printk("File contents: %s\n", test_txt_buf);
+			}
+			else
+				printk("KMalloc\n");
+		}
+		else
+			printk("f_open: %d\n", fres);
+	}
+	else
+		printk("f_open: %d\n", fres);
 
 #ifdef IN_EMULATOR
 	// unmask IPC IRQ
