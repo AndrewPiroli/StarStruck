@@ -1356,6 +1356,8 @@ static int thread_worker(oh1_module_ctrl *module)
 	ohci_transfer_descriptor_wii *td_last;
 	u16 length;
 
+	printk("oh1: thread worker running\n");
+
 	device = module->device_event;
 	/* TODO: the original code was declaring the queue to be 0x10 in size. This
 	 * seems a mistake, but it needs to be double-checked. */
@@ -1374,6 +1376,7 @@ static int thread_worker(oh1_module_ctrl *module)
 			rc = OSReceiveMessage(queue_id, NULL, 0);
 		}
 		while (rc != 0);
+		printk("oh1: ReceiveMessage\n");
 
 		intstat = regs->intstat;
 		// Check WritebackDoneHead flag
@@ -1908,6 +1911,7 @@ int main(void)
 	rc = OSCreateMessageQueue(&module->timer_queue_buffer, 1);
 	if (rc < 0)
 		goto error;
+	printk("oh1: Timer Queue Created\n");
 
 	module->timer_queue = rc;
 	/* Post a status change message request, in order to update the status of
@@ -1915,11 +1919,13 @@ int main(void)
 	rc = OSCreateTimer(0, 0, module->timer_queue, s_status_change_message);
 	if (rc < 0)
 		goto error;
+	printk("oh1: Timer Created\n");
 
 	module->timer = rc;
 	rc = init_transfer_descriptors(module);
 	if (rc < 0)
 		goto error_destroy_timer_queue;
+	printk("oh1: init transfer descriptors\n");
 
 	ohci_endpoint_descriptor *endpoints = module->endpoint_descriptors;
 	ohci_hcca *hcca = module->hcca;
@@ -1938,6 +1944,7 @@ int main(void)
 		rc = IPC_EINVAL;
 		goto error_destroy_timer_queue;
 	}
+	printk("oh1: rev = 0x10\n");
 
 	if ((regs->ctrl & OHCI_CTRL_IR) != 0)
 	{
@@ -1953,6 +1960,7 @@ int main(void)
 		usleept(module, 20000);
 		regs->ctrl &= OHCI_CTRL_RWC;
 	}
+	printk("oh1: CTRL_IR != 0\n");
 
 	/* We expect the host controller to be in reset state */
 	if (OHCI_GET(CTRL_HCFS, regs->ctrl) != OHCI_CTRL_HCFS_RESET)
@@ -1960,6 +1968,7 @@ int main(void)
 		rc = IPC_NOTREADY;
 		goto error_destroy_timer_queue;
 	}
+	printk("oh1: HCFS Reset\n");
 
 	/* Nominal value of the frame interval, according to the specs */
 	module->frame_interval = 11999;
@@ -1978,6 +1987,7 @@ int main(void)
 		rc = IPC_NOTREADY;
 		goto error_destroy_timer_queue;
 	}
+	printk("oh1: CS HCR\n");
 
 	frame_interval = module->frame_interval;
 	u32 largest_data_packet = (frame_interval * 6 - 1260) / 7;
@@ -2003,19 +2013,26 @@ int main(void)
 	rc = OSCreateThread((ThreadFunc)thread_worker, module, s_worker_thread_stack,
 	                    sizeof(s_worker_thread_stack), priority, 1);
 	if (rc < 0)
+	{
+		printk("OSCreateThread fail :( rc=%d\n", rc);
 		goto error_destroy_timer_queue;
+	}
+	printk("oh1: ThreadWorker Create\n");
 
 	s32 thread_id = rc;
-	OSStartThread(thread_id);
+	printk("oh1 StartThread %d. rc= %d\n", thread_id,
+		OSStartThread(thread_id));
 	priority = OSGetThreadPriority(0);
 	OSSetThreadPriority(0, priority - 1);
 	rc = query_devices(module);
 	if (rc < 0)
 		goto error_destroy_timer_queue;
 
+	printk("process_events\n");
 	process_events(module);
 
 error_destroy_timer_queue:
+	printk("oh1: error destroy\n");
 	if (module->timer_queue > 0)
 		OSDestroyMessageQueue(module->timer_queue);
 
