@@ -2,7 +2,7 @@
 .SUFFIXES:
 #---------------------------------------------------------------------------------
 ifeq ($(SDKDIR),)
-SDKDIR = ../../sdk
+export SDKDIR = $(CURDIR)/../../sdk
 endif
 
 include $(SDKDIR)/starstruck_rules
@@ -23,7 +23,7 @@ INCLUDES		:= source
 DATA			:=
 PROCESSID		:= 0x05
 PRIORITY		:= 0x58
-VIRTUALADDR		:= 0x20000000
+VIRTUALADDR		:= 0x20200000
 PHYSADDR		:= 0x138B0000
 STACKSIZE		:= 0x800
 
