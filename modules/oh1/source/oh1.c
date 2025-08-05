@@ -2010,6 +2010,9 @@ int main(void)
 	s_ehci_regs->chickenbits |= EHCI_CHICKENBITS_INIT;
 
 	s32 priority = OSGetThreadPriority(0);
+	// Something weird going on here, if I remove the following line then priority is uninitialized memory
+	// when it gets passed to OSCreateThread.
+	printk("OSGetThreadPriority(0) = %u\n", priority);
 	rc = OSCreateThread((ThreadFunc)thread_worker, module, s_worker_thread_stack,
 	                    sizeof(s_worker_thread_stack), priority, 1);
 	if (rc < 0)
