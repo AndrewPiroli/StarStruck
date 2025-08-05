@@ -583,7 +583,9 @@ s32 InitializeMemory(void)
 		DomainAccessControlTable[i] = DOMAIN_VALUE(8, DOMAIN_CLIENT) |
 		                              DOMAIN_VALUE(15, DOMAIN_CLIENT);
 
-	DomainAccessControlTable[0] = 0x55555555; //PID 0 = client access in all domains
+	//dirty hack - disable all memory protection for pid 0
+	//combine with launching all modules as pid 0 for fun and profit
+	DomainAccessControlTable[0] = 0xffffffff;
 
 	//give a few processes client access to their own domain. PID 1 to domain 1, PID 2 to domain 2, etc etc
 	DomainAccessControlTable[1] |= DOMAIN_VALUE(1, DOMAIN_CLIENT);

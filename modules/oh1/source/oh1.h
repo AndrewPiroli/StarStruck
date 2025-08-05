@@ -133,6 +133,4 @@ struct oh1_module_ctrl
 	u8 ahb_dev_flush;
 };
 
-int main(void);
-
 #endif
