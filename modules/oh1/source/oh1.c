@@ -1892,7 +1892,7 @@ int main(void)
 	oh1_module_ctrl *module = NULL;
 
 	OSSetThreadPriority(0, 0x60);
-	printk("%s\n", "$IOSVersion: OH1: 07/11/08 14:34:40 64M $");
+	printk("$IOSVersion: OH1: %s %s 64M $\n", __DATE__, __TIME__);
 	rc = create_heap();
 	if (rc < 0)
 		goto error;
