@@ -1,18 +1,39 @@
-export SDKDIR=$(CURDIR)/sdk
+# SFFS host tool - builds a PC utility to read/write Wii NAND SFFS images.
 
-all:
-	$(MAKE) -C core
-	$(MAKE) -C elfloader
-	$(foreach dir, $(wildcard ./modules/*/), $(MAKE) -C $(dir);)
-	$(MAKE) -C kernel
-	$(MAKE) -C tools/ppcloader
+CC      := cc
+CFLAGS  := -O2 -g -Wall -Wextra -std=gnu11 -Iinclude -Isrc/host -Isrc
+LDFLAGS :=
+
+SRnand := \
+	src/sffs/cache.c \
+	src/sffs/commands.c \
+	src/sffs/filesystem.c \
+	src/sffs/inode.c \
+	src/errors.c
+
+SRC_HOST := \
+	src/host/crypto.c \
+	src/host/keys.c \
+	src/host/nandimage.c \
+	src/host/nand.c \
+	src/host/cluster.c \
+	src/host/endian.c \
+	src/host/main.c
+
+SRCS := $(SRnand) $(SRC_HOST)
+OBJS := $(SRCS:.c=.o)
+
+TARGET := sffs
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	$(MAKE) -C core clean
-	$(MAKE) -C elfloader clean
-	$(foreach dir, $(wildcard ./modules/*/), $(MAKE) -C $(dir) clean;)
-	$(MAKE) -C kernel clean
-	$(MAKE) -C tools/ppcloader clean
-	
-run: all
-	$(MAKE) -C tools/ppcloader run
+	rm -f $(OBJS) $(TARGET)
+
+.PHONY: all clean

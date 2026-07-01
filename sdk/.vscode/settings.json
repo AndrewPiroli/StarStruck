@@ -1,7 +1,0 @@
-{
-	//because i can't exclude the tools folder in the root without also excluding kernel/tools...
-	"files.exclude": {
-		"include/**": true,
-		"lib/**": true,
-	}
-}

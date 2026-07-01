@@ -1,15 +1,11 @@
-git_version.h
-*.d
-*.bin
-*.elf
-*.map
-*~
 *.o
+*.d
+*~
 .*.swp
-*.dol
-*.a
-*.lst
-**/build/*
-**/lib/
-**/sdk/include/**
-tools/ppcloader/build/
+
+# built tool
+/sffs
+
+# NAND dumps / keys should never be committed
+*.bin
+keys.bin
