@@ -107,14 +107,9 @@ s32 ProcessInodeAction(SuperBlockInfo* superblock, u32 inode, InodeAction action
 		{
 			if (entryType == S_IFREG)
 			{
-				u16 cluster = entry->StartCluster;
-				while (cluster != SFFSLastNode)
-				{
-					u16 nextCluster = superblock->FatEntries[cluster];
-					superblock->FatEntries[cluster] = SFFSFreeNode;
-					RemoveUsedClusterStats(1);
-					cluster = nextCluster;
-				}
+				s32 freed = FreeClusterChain(superblock, entry->StartCluster);
+				if (freed < 0)
+					return freed;
 			}
 
 			// Clear the FST entry attributes

@@ -16,6 +16,9 @@
 // File system operations
 s32 GetPathUsage(const char* path, u32* clusters, u32* inodes);
 s32 DeletePath(const u32 uid, const u16 gid, const char* path);
+// Release every cluster of a regular file, keeping the inode (and therefore its
+// name, owner, permissions and encryption salt) intact.
+s32 TruncateFile(const u32 uid, const u16 gid, const char* path);
 s32 ReadDirectory(const u32 uid, const u16 gid, const char* path, char* files, u32* numberOfEntries);
 s32 CreateDirectory(const u32 uid, const u16 gid, const char* path, u8 attributes, u8 ownerPerm, u8 groupPerm, u8 otherPerm);
 s32 Rename(const u32 userId, const u16 groupId, const char* source, const char* destination);

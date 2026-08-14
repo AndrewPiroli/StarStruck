@@ -87,6 +87,21 @@ CHECK_SIZE(SuperBlockInfo, 0x40000);
 
 extern SFFSStatistics _sffStats;
 extern u32 _fileSystemMetadataSizeShift;
+// Byte offset of the first data cluster, and the size of the data area.
+// Both are computed by InitSuperblockInfo and defined in commands.c.
+extern u32 _superblockOffset;
+extern u32 _fileSystemDataSize;
+
+// First cluster index of the data area, and how many clusters it spans.
+static inline u32 GetFirstDataCluster(void)
+{
+	return _superblockOffset >> CLUSTER_SIZE_SHIFT;
+}
+
+static inline u32 GetDataClusterCount(void)
+{
+	return _fileSystemDataSize >> CLUSTER_SIZE_SHIFT;
+}
 
 static inline void RemoveUsedInodeStats(u32 inodeCount)
 {

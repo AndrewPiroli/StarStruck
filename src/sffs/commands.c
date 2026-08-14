@@ -41,6 +41,49 @@ static inline u16 TraverseClusterChain(SuperBlockInfo* superblock, u16 startClus
 	return cluster;
 }
 
+// True if cluster is a valid index into the data area of the FAT.
+// The FAT holds one u16 per cluster, but the chain terminators (0xFFFB-0xFFFF)
+// are far outside that range: dereferencing one would run off FatEntries and
+// corrupt the FST that follows it in the superblock.
+bool IsDataCluster(u16 cluster)
+{
+	const u32 firstCluster = GetFirstDataCluster();
+	return cluster >= firstCluster && cluster < firstCluster + GetDataClusterCount();
+}
+
+// Free every cluster in the chain starting at startCluster, marking each one
+// SFFSFreeNode and updating the cluster statistics.
+//
+// Unlike the open coded loops this replaces, the next link is read *before* the
+// entry is overwritten, the walk is bounds checked, and the iteration count is
+// capped so a corrupted (or cyclic) chain cannot spin forever or write out of
+// bounds. Returns the number of clusters freed, or FS_ECORRUPT on a bad chain.
+s32 FreeClusterChain(SuperBlockInfo* superblock, u16 startCluster)
+{
+	const u32 maxIterations = GetDataClusterCount();
+	u32 freed = 0;
+	u16 cluster = startCluster;
+
+	while (cluster != SFFSLastNode)
+	{
+		// A chain must terminate at SFFSLastNode; anything else (a sentinel or
+		// an out of range index) means the FAT is damaged.
+		if (!IsDataCluster(cluster))
+			return FS_ECORRUPT;
+
+		if (freed >= maxIterations)
+			return FS_ECORRUPT;
+
+		const u16 nextCluster = superblock->FatEntries[cluster];
+		superblock->FatEntries[cluster] = SFFSFreeNode;
+		RemoveUsedClusterStats(1);
+		freed++;
+		cluster = nextCluster;
+	}
+
+	return (s32)freed;
+}
+
 // Populate _fileSalt from an FST entry (ChainIndex must be set by the caller).
 static inline void InitFileSalt(u32 inode, const FileSystemTableEntry* fstEntry)
 {
@@ -566,19 +609,12 @@ s32 DeletePath(const u32 uid, const u16 gid, const char* path)
 		if (ret != IPC_SUCCESS)
 			return ret;
 
-		// Get first cluster of file
-		u16 cluster = entry->StartCluster;
-
 		// Free the file's cluster chain
-		while (cluster != SFFSLastNode)
-		{
-			clustersFreed = true;
+		s32 freed = FreeClusterChain(superblock, entry->StartCluster);
+		if (freed < 0)
+			return freed;
 
-			u16 nextCluster = superblock->FatEntries[cluster];
-			superblock->FatEntries[cluster] = SFFSFreeNode;
-			RemoveUsedClusterStats(1);
-			cluster = nextCluster;
-		}
+		clustersFreed = freed > 0;
 	}
 
 	// Remove inode from parent's sibling chain
@@ -602,6 +638,68 @@ s32 DeletePath(const u32 uid, const u16 gid, const char* path)
 		ret = TryWriteSuperblock();
 
 	return ret;
+}
+
+// Truncate a regular file to zero length, releasing all of its clusters while
+// keeping the inode itself intact.
+//
+// This exists so a file can be *replaced* rather than only extended. Deleting
+// and recreating would work too, but the per file encryption salt is derived
+// from the UserId, Name, inode number and SFFSGeneration (see InitFileSalt), so
+// a recreated file would land on a different inode and lose its ownership and
+// permissions. Truncating in place leaves every one of those fields untouched,
+// which keeps the file readable by the console after its contents change.
+//
+// Block reclamation is deliberately left to AllocateCluster: freed clusters
+// become SFFSFreeNode, and the allocator already reclaims when it runs dry.
+s32 TruncateFile(const u32 uid, const u16 gid, const char* path)
+{
+	if (GetPathLength(path) == 0)
+		return FS_EINVAL;
+
+	SuperBlockInfo* superblock = SelectSuperBlock();
+	if (superblock == NULL)
+		return FS_NOFILESYSTEM;
+
+	char directory[MAX_FILE_PATH];
+	char fileName[MAX_FILE_SIZE + 4];
+
+	if (SplitPath(path, directory, fileName) != IPC_SUCCESS)
+		return FS_EINVAL;
+
+	u32 directoryNode = FindInodeByPath(superblock, directory);
+	if (directoryNode == SFFSErasedNode)
+		return FS_ENOENT;
+
+	// Mirror DeletePath: write permission is checked on the parent directory
+	s32 ret = CheckUserPermissions(superblock, directoryNode, uid, gid, Write);
+	if (ret != IPC_SUCCESS)
+		return ret;
+
+	u32 fileNode = FindInode(superblock, directoryNode, fileName);
+	if (fileNode == SFFSErasedNode)
+		return FS_ENOENT;
+
+	FileSystemTableEntry* entry = GetFstEntry(superblock, fileNode);
+	if (entry->Mode.Fields.Type != S_IFREG)
+		return FS_EINVAL;
+
+	ret = CheckIfFileOpen(fileNode);
+	if (ret != IPC_SUCCESS)
+		return ret;
+
+	// Nothing to do for an already empty file
+	if (entry->StartCluster == SFFSLastNode && entry->FileSize == 0)
+		return IPC_SUCCESS;
+
+	s32 freed = FreeClusterChain(superblock, entry->StartCluster);
+	if (freed < 0)
+		return freed;
+
+	entry->StartCluster = SFFSLastNode;
+	entry->FileSize = 0;
+
+	return TryWriteSuperblock();
 }
 
 static inline bool IsValidPath(const char* path, const u32 pathLen)
@@ -709,17 +807,13 @@ s32 Rename(const u32 userId, const u16 groupId, const char* source, const char* 
 				if (ret != IPC_SUCCESS)
 					return ret;
 
-				u16 cluster = destinationEntry->StartCluster;
-				if (cluster == SFFSLastNode)
-					break;
+				// Overwriting an existing file: release the clusters it owns
+				s32 freed = FreeClusterChain(superblock, destinationEntry->StartCluster);
+				if (freed < 0)
+					return freed;
 
-				unlinkedInodes = true;
-				while (cluster != SFFSLastNode)
-				{
-					superblock->FatEntries[cluster] = SFFSFreeNode;
-					RemoveUsedClusterStats(1);
-					cluster = superblock->FatEntries[cluster];
-				}
+				if (freed > 0)
+					unlinkedInodes = true;
 				break;
 		}
 
@@ -735,12 +829,16 @@ s32 Rename(const u32 userId, const u16 groupId, const char* source, const char* 
 	if (ret != IPC_SUCCESS)
 		return ret;
 
-	// Update data of the source entry to the new data
+	// Update data of the source entry to the new data, then link it into the
+	// destination directory's child list at the head.
+	// NOTE: it is the *parent's* StartCluster that points at the first child.
+	// Assigning to srcEntry->StartCluster here would destroy the file's data
+	// pointer and leave the entry unreachable from either directory.
 	FileSystemTableEntry* parentEntry = GetFstEntry(superblock, destinationDirectoryInode);
 	strncpy(srcEntry->Name, destinationName, MAX_FILE_SIZE);
 	srcEntry->Mode = sourceMode;
 	srcEntry->Sibling = parentEntry->StartCluster;
-	srcEntry->StartCluster = sourceInode;
+	parentEntry->StartCluster = sourceInode;
 
 	bool flushSuperBlock = false;
 	if (unlinkedInodes)

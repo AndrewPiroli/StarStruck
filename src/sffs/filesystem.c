@@ -18,9 +18,6 @@
 #include "filesystem.h"
 #include "inode.h"
 
-extern u32 _superblockOffset;
-extern u32 _fileSystemDataSize;
-
 // Superblock globals
 u32 _fileSystemMetadataSizeShift = 0;
 bool _superblockInitialized = false;

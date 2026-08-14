@@ -33,6 +33,13 @@ typedef enum
 	GetUsedInodes = 5     // Count total inodes used by subtree
 } InodeAction;
 
+// FAT cluster chain operations (implemented in commands.c)
+// True if the cluster index falls inside the filesystem data area.
+bool IsDataCluster(u16 cluster);
+// Free the chain starting at startCluster. Returns the number of clusters
+// freed, or FS_ECORRUPT if the chain is malformed or cyclic.
+s32 FreeClusterChain(SuperBlockInfo* superblock, u16 startCluster);
+
 // Inode tree operations
 s32 ProcessInodeAction(SuperBlockInfo* superblock, u32 inode, InodeAction action);
 

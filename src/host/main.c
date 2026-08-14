@@ -4,14 +4,19 @@
 	Reads and writes the SFFS filesystem inside a Wii nand.bin dump from a PC.
 
 	Usage:
-	  sffs <nand.bin> [--keys keys.bin] [--rw] <command> [args...]
+	  sffs <nand.bin> [--keys keys.bin] [--rw] [--scrub] <command> [args...]
 
 	Commands:
 	  ls   <path>                 list a directory
 	  cat  <path> [outfile]       read a file (to stdout or outfile)
-	  put  <hostfile> <path>      write host file into an existing SFFS file
+	  put  <hostfile> <path>      replace (or create) an SFFS file
+	  rm   [-r] <path>            delete a file, or a tree with -r
+	  truncate <path>             release a file's contents, keeping the inode
+	  touch <path>                create an empty file
 	  mkdir <path>                create a directory
+	  format                      create a fresh SFFS
 	  stat                        print filesystem statistics
+	  fsck                        check filesystem consistency
 */
 
 #include <stdio.h>
@@ -28,9 +33,12 @@
 #include "../sffs/cache.h"
 #include "../handles.h"
 
+#include "../hardware/cluster.h"
+
 #include "nandimage.h"
 #include "hostnand.h"
 #include "keys.h"
+#include "fsck.h"
 
 /* _fileHandles is declared extern in handles.h but defined on-device in
    devfs.c (which we dropped); provide it here. _superblockOffset and
@@ -60,6 +68,28 @@ static const char* ErrName(s32 e)
 	}
 }
 
+/* ---- Path helpers ---- */
+
+/* Resolve a path to its inode and entry type. Either output may be NULL.
+   Returns FS_ENOENT when the path does not exist. */
+static s32 LookupPath(const char* path, u32* inodeOut, FileSystemEntryType* typeOut)
+{
+	SuperBlockInfo* sb = SelectSuperBlock();
+	if (sb == NULL)
+		return FS_NOFILESYSTEM;
+
+	u32 inode = FindInodeByPath(sb, path);
+	if (inode == SFFSErasedNode)
+		return FS_ENOENT;
+
+	if (inodeOut != NULL)
+		*inodeOut = inode;
+	if (typeOut != NULL)
+		*typeOut = GetFstEntry(sb, inode)->Mode.Fields.Type;
+
+	return IPC_SUCCESS;
+}
+
 /* ---- Minimal handle helpers (ported from devfs.c) ---- */
 
 static FSHandle* OpenFile(u32 uid, u16 gid, const char* path, AccessMode mode)
@@ -68,13 +98,12 @@ static FSHandle* OpenFile(u32 uid, u16 gid, const char* path, AccessMode mode)
 	if (sb == NULL)
 		return NULL;
 
-	u32 inode = FindInodeByPath(sb, path);
-	if (inode == SFFSErasedNode)
+	u32 inode;
+	FileSystemEntryType type;
+	if (LookupPath(path, &inode, &type) != IPC_SUCCESS || (type & S_IFMT) != S_IFREG)
 		return NULL;
 
 	FileSystemTableEntry* entry = GetFstEntry(sb, inode);
-	if ((entry->Mode.Fields.Type & S_IFMT) != S_IFREG)
-		return NULL;
 
 	for (u32 i = 0; i < FS_MAX_FILE_HANDLES; i++)
 	{
@@ -112,6 +141,73 @@ static s32 CloseFile(FSHandle* h)
 	}
 	h->InUse = 0;
 	return ret;
+}
+
+/* ---- Optional scrubbing of freed clusters ----
+
+   Freeing a cluster only changes its FAT entry; the old encrypted contents stay
+   in the image. With --scrub we snapshot the FAT before a destructive command
+   and afterwards zero every cluster that went from in-use to free.
+
+   This runs *after* the operation has flushed the superblock. Zeroing first
+   would destroy live data if that flush failed. It is also safe across the
+   relocations ReclaimBlocks performs, since a relocated cluster's contents
+   already exist at their new home by the time the source is released. */
+
+static bool g_scrub = false;
+static u16* g_fatBefore = NULL;
+
+static void ScrubBegin(void)
+{
+	if (!g_scrub)
+		return;
+
+	SuperBlockInfo* sb = SelectSuperBlock();
+	if (sb == NULL)
+		return;
+
+	const u32 count = GetFatArraySize() / sizeof(u16);
+	free(g_fatBefore);
+	g_fatBefore = malloc(count * sizeof(u16));
+	if (g_fatBefore != NULL)
+		memcpy(g_fatBefore, sb->FatEntries, count * sizeof(u16));
+}
+
+static void ScrubEnd(void)
+{
+	if (!g_scrub || g_fatBefore == NULL)
+		return;
+
+	SuperBlockInfo* sb = SelectSuperBlock();
+	if (sb == NULL)
+		return;
+
+	u8* zero = calloc(1, CLUSTER_SIZE);
+	if (zero == NULL)
+		return;
+
+	const u32 count = GetFatArraySize() / sizeof(u16);
+	u32 scrubbed = 0;
+	for (u32 cluster = 0; cluster < count; cluster++)
+	{
+		/* Reserved/bad entries are above SFFSLastNode, so they never qualify. */
+		const bool wasUsed = g_fatBefore[cluster] <= SFFSLastNode;
+		const u16 now = sb->FatEntries[cluster];
+		const bool nowFree = (now == SFFSFreeNode || now == SFFSErasedNode);
+
+		if (!wasUsed || !nowFree)
+			continue;
+
+		if (WriteClusters((u16)cluster, 1, ClusterFlagsNone, NULL, zero, NULL) == IPC_SUCCESS)
+			scrubbed++;
+	}
+
+	free(zero);
+	free(g_fatBefore);
+	g_fatBefore = NULL;
+
+	if (scrubbed != 0)
+		fprintf(stderr, "scrubbed %u freed cluster%s\n", scrubbed, scrubbed == 1 ? "" : "s");
 }
 
 /* ---- Commands ---- */
@@ -223,7 +319,56 @@ static int CmdCat(const char* path, const char* outfile)
 	return rc;
 }
 
-static int CmdPut(const char* hostfile, const char* path)
+static int CmdRm(const char* path, bool recursive)
+{
+	FileSystemEntryType type;
+	s32 ret = LookupPath(path, NULL, &type);
+	if (ret != IPC_SUCCESS)
+	{
+		fprintf(stderr, "rm: '%s': %s (%d)\n", path, ErrName(ret), ret);
+		return 1;
+	}
+
+	/* DeletePath removes a directory's entire subtree without asking, so make
+	   the caller say so explicitly. */
+	if (type == S_IFDIR && !recursive)
+	{
+		fprintf(stderr, "rm: '%s' is a directory; pass -r to delete it and everything under it\n", path);
+		return 1;
+	}
+
+	ret = DeletePath(0, 0, path);
+	if (ret != IPC_SUCCESS)
+	{
+		fprintf(stderr, "rm: '%s': %s (%d)\n", path, ErrName(ret), ret);
+		return 1;
+	}
+	return 0;
+}
+
+static int CmdTruncate(const char* path)
+{
+	s32 ret = TruncateFile(0, 0, path);
+	if (ret != IPC_SUCCESS)
+	{
+		fprintf(stderr, "truncate: '%s': %s (%d)\n", path, ErrName(ret), ret);
+		return 1;
+	}
+	return 0;
+}
+
+/* Write a host file into the SFFS.
+
+   By default this is a true replacement: an existing target is truncated first
+   so the file ends up exactly the size of the source. Without that truncation
+   WriteFile can only ever extend, because it frees at most as many clusters as
+   it writes, re-links whatever old tail remains onto the new chain, and never
+   shrinks FileSize.
+
+   Truncating (rather than deleting and recreating) keeps the inode number,
+   name, owner, group, permissions and generation, all of which feed the per
+   file encryption salt. */
+static int CmdPut(const char* hostfile, const char* path, bool append, bool noCreate)
 {
 	FILE* in = fopen(hostfile, "rb");
 	if (in == NULL)
@@ -232,12 +377,80 @@ static int CmdPut(const char* hostfile, const char* path)
 		return 1;
 	}
 
+	FileSystemEntryType type;
+	s32 ret = LookupPath(path, NULL, &type);
+
+	if (ret == FS_ENOENT)
+	{
+		if (noCreate)
+		{
+			fprintf(stderr, "put: '%s' does not exist (--no-create)\n", path);
+			fclose(in);
+			return 1;
+		}
+
+		/* Same defaults as touch: uid 0, gid 0, owner/group rw, other none.
+		   Ownership must be set before any data is written, since UserId is
+		   part of the encryption salt. */
+		ret = CreateFile(0, 0, path, 0, 3, 3, 0);
+		if (ret != IPC_SUCCESS)
+		{
+			fprintf(stderr, "put: cannot create '%s': %s (%d)\n", path, ErrName(ret), ret);
+			fclose(in);
+			return 1;
+		}
+	}
+	else if (ret != IPC_SUCCESS)
+	{
+		fprintf(stderr, "put: '%s': %s (%d)\n", path, ErrName(ret), ret);
+		fclose(in);
+		return 1;
+	}
+	else if (type != S_IFREG)
+	{
+		fprintf(stderr, "put: '%s' is not a regular file\n", path);
+		fclose(in);
+		return 1;
+	}
+	else if (!append)
+	{
+		ret = TruncateFile(0, 0, path);
+		if (ret != IPC_SUCCESS)
+		{
+			fprintf(stderr, "put: cannot truncate '%s': %s (%d)\n", path, ErrName(ret), ret);
+			fclose(in);
+			return 1;
+		}
+	}
+
 	FSHandle* h = OpenFile(0, 0, path, ReadWrite);
 	if (h == NULL)
 	{
-		fprintf(stderr, "put: cannot open target '%s' (must exist)\n", path);
+		fprintf(stderr, "put: cannot open target '%s'\n", path);
 		fclose(in);
 		return 1;
+	}
+
+	if (append && h->Size != 0)
+	{
+		/* SFFS can only seek in whole clusters, so an append to a file whose
+		   size is not a multiple of the cluster size resumes at the next
+		   cluster boundary, leaving the remainder of the last cluster in
+		   place. */
+		if ((h->Size & (CLUSTER_SIZE - 1)) != 0)
+			fprintf(stderr,
+			        "put: warning: '%s' is %u bytes, which is not a multiple of the %u byte cluster;\n"
+			        "     appended data will start at the next cluster boundary\n",
+			        path, h->Size, CLUSTER_SIZE);
+
+		s32 sret = SeekFile(h, 0, SeekEnd);
+		if (sret != IPC_SUCCESS)
+		{
+			fprintf(stderr, "put: cannot seek to end of '%s': %s (%d)\n", path, ErrName(sret), sret);
+			fclose(in);
+			CloseFile(h);
+			return 1;
+		}
 	}
 
 	/* Slurp the whole host file. WriteFile writes cluster by cluster and reads
@@ -326,15 +539,26 @@ static int CmdMkdir(const char* path)
 static void Usage(const char* prog)
 {
 	fprintf(stderr,
-	        "usage: %s <nand.bin> [--keys keys.bin] [--rw] <command> [args]\n"
+	        "usage: %s <nand.bin> [--keys keys.bin] [--rw] [--scrub] <command> [args]\n"
+	        "\n"
+	        "global options:\n"
+	        "  --keys <file>               load NAND keys from keys.bin\n"
+	        "  --rw                        open the image read/write\n"
+	        "  --scrub                     zero clusters as they are freed\n"
+	        "\n"
 	        "commands:\n"
 	        "  ls    <path>\n"
 	        "  cat   <path> [outfile]\n"
-	        "  put   <hostfile> <path>\n"
+	        "  put   [--append] [--no-create] <hostfile> <path>\n"
+	        "                              replace a file (truncates first),\n"
+	        "                              creating it if it does not exist\n"
+	        "  rm    [-r] <path>           delete a file; -r deletes a directory tree\n"
+	        "  truncate <path>             release a file's contents, keeping the inode\n"
 	        "  touch <path>                create an empty file\n"
 	        "  mkdir <path>\n"
 	        "  format                      create a fresh SFFS (destroys data)\n"
-	        "  stat\n",
+	        "  stat\n"
+	        "  fsck                        check filesystem consistency\n",
 	        prog);
 }
 
@@ -357,6 +581,8 @@ int main(int argc, char** argv)
 			keysPath = argv[++i];
 		else if (strcmp(argv[i], "--rw") == 0)
 			writable = true;
+		else if (strcmp(argv[i], "--scrub") == 0)
+			g_scrub = true;
 		else
 			break;
 	}
@@ -368,9 +594,33 @@ int main(int argc, char** argv)
 	}
 	const char* cmd = argv[i++];
 
-	if (strcmp(cmd, "put") == 0 || strcmp(cmd, "mkdir") == 0 || strcmp(cmd, "touch") == 0 ||
-	    strcmp(cmd, "format") == 0)
+	/* Per-command options, accepted before the positional arguments. */
+	bool flagRecursive = false;
+	bool flagAppend = false;
+	bool flagNoCreate = false;
+	for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++)
+	{
+		if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--recursive") == 0)
+			flagRecursive = true;
+		else if (strcmp(argv[i], "--append") == 0)
+			flagAppend = true;
+		else if (strcmp(argv[i], "--no-create") == 0)
+			flagNoCreate = true;
+		else
+		{
+			fprintf(stderr, "unknown option '%s'\n", argv[i]);
+			Usage(argv[0]);
+			return 2;
+		}
+	}
+
+	const bool destructive = strcmp(cmd, "put") == 0 || strcmp(cmd, "rm") == 0 || strcmp(cmd, "truncate") == 0;
+
+	if (destructive || strcmp(cmd, "mkdir") == 0 || strcmp(cmd, "touch") == 0 || strcmp(cmd, "format") == 0)
 		writable = true;
+
+	if (g_scrub && !destructive)
+		fprintf(stderr, "warning: --scrub has no effect on '%s'\n", cmd);
 
 	if (NandImageOpen(nandPath, writable) != IPC_SUCCESS)
 		return 1;
@@ -409,8 +659,13 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
+	if (destructive)
+		ScrubBegin();
+
 	if (strcmp(cmd, "stat") == 0)
 		rc = CmdStat();
+	else if (strcmp(cmd, "fsck") == 0)
+		rc = CmdFsck();
 	else if (strcmp(cmd, "touch") == 0 && i < argc)
 		rc = CmdTouch(argv[i]);
 	else if (strcmp(cmd, "ls") == 0 && i < argc)
@@ -418,7 +673,11 @@ int main(int argc, char** argv)
 	else if (strcmp(cmd, "cat") == 0 && i < argc)
 		rc = CmdCat(argv[i], (i + 1 < argc) ? argv[i + 1] : NULL);
 	else if (strcmp(cmd, "put") == 0 && i + 1 < argc)
-		rc = CmdPut(argv[i], argv[i + 1]);
+		rc = CmdPut(argv[i], argv[i + 1], flagAppend, flagNoCreate);
+	else if (strcmp(cmd, "rm") == 0 && i < argc)
+		rc = CmdRm(argv[i], flagRecursive);
+	else if (strcmp(cmd, "truncate") == 0 && i < argc)
+		rc = CmdTruncate(argv[i]);
 	else if (strcmp(cmd, "mkdir") == 0 && i < argc)
 		rc = CmdMkdir(argv[i]);
 	else
@@ -426,6 +685,9 @@ int main(int argc, char** argv)
 		Usage(argv[0]);
 		rc = 2;
 	}
+
+	if (destructive && rc == 0)
+		ScrubEnd();
 
 	NandImageClose();
 	return rc;

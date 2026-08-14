@@ -18,6 +18,7 @@ SRC_HOST := \
 	src/host/nand.c \
 	src/host/cluster.c \
 	src/host/endian.c \
+	src/host/fsck.c \
 	src/host/main.c
 
 SRCS := $(SRnand) $(SRC_HOST)
