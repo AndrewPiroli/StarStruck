@@ -761,15 +761,10 @@ s32 Rename(const u32 userId, const u16 groupId, const char* source, const char* 
 	srcEntry->Sibling = parentEntry->StartCluster;
 	parentEntry->StartCluster = sourceInode;
 
-	bool flushSuperBlock = false;
 	if (unlinkedInodes)
-	{
-		ret = ReclaimBlocks(superblock);
-		flushSuperBlock = ret == IPC_SUCCESS;
-		ret = IPC_SUCCESS;
-	}
+		ReclaimBlocks(superblock);
 
-	return flushSuperBlock ? TryWriteSuperblock() : ret;
+	return TryWriteSuperblock();
 }
 
 s32 ReadDirectory(const u32 uid, const u16 gid, const char* path, char* files, u32* numberOfEntries)
