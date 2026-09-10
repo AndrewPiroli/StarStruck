@@ -529,6 +529,8 @@ s32 HandleDevFsIoctl(IpcMessage *message)
 			                  (const char *)ioctl->InputBuffer);
 
 		case IOCTL_RENAME:
+			if (ioctl->InputLength < MAX_FILE_PATH * 2)
+				return FS_EINVAL;
 			// Expect two MAX_FILE_PATH buffers concatenated: source path then destination path
 			const FileRenameParameter *paths =
 			    (const FileRenameParameter *)ioctl->InputBuffer;
