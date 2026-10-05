@@ -193,7 +193,14 @@ static void ScrubEnd(void)
 		/* Reserved/bad entries are above SFFSLastNode, so they never qualify. */
 		const bool wasUsed = g_fatBefore[cluster] <= SFFSLastNode;
 		const u16 now = sb->FatEntries[cluster];
-		const bool nowFree = (now == SFFSFreeNode || now == SFFSErasedNode);
+		/* A released cluster does not always end up SFFSFreeNode: ReclaimBlocks
+		   (run by delete/rename) erases emptied blocks and marks them
+		   SFFSReservedNode or SFFSErasedNode, so a used->reserved/erased
+		   transition is just as much a release as used->free. This is safe
+		   even for clusters that were *relocated* rather than deleted, since
+		   their contents already exist at the new home by the time the source
+		   block is released (see the note above ScrubBegin). */
+		const bool nowFree = (now == SFFSFreeNode || now == SFFSErasedNode || now == SFFSReservedNode);
 
 		if (!wasUsed || !nowFree)
 			continue;

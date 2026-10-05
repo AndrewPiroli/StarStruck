@@ -189,13 +189,16 @@ s32 WriteClusters(u16 cluster, u32 count, ClusterFlags flags, SaltData* salt, u8
 	if (swapSuperblock)
 		SwapSuperblockEndian((SuperBlockInfo*)data);
 
-	/* Compute HMAC over the big-endian salt + on-NAND (big-endian) data. */
+	/* Compute HMAC over the big-endian salt + on-NAND (big-endian) data.
+	   IOS stores the digest twice back to back (it falls back to the second
+	   copy if the first one's spare bytes are damaged), so do the same. */
 	u8 hmacBuffer[0x40] = { 0 };
 	if (flags & ClusterFlagsVerify)
 	{
 		u8 digest[20];
 		ComputeClusterHmac(salt, data, totalPages * pageSize, digest);
 		memcpy(hmacBuffer, digest, 0x14);
+		memcpy(hmacBuffer + 0x14, digest, 0x14);
 	}
 	u32 hmacBytes = 0;
 
